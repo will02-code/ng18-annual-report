@@ -1,0 +1,1035 @@
+---
+title: "Terrestrial surveys"
+format: html
+---
+
+# Terrestrial surveys
+
+```{r}
+library(tidyverse)
+library(patchwork)
+```
+
+
+```{r}
+raw_data <- read_csv("2023/data/final_herbivore-data/ng18_herbivore_survey_data.csv")
+raw_data <- raw_data |>
+  mutate(
+    id = if_else(id == 4.1 & transect == "mopane", 4.2, id),
+    count = if_else(count == 0, 1, count)
+  )
+
+functional_groups <- read_csv("shared/reference/mammal_functional_groups_terrestrial.csv")
+
+raw_data <- raw_data |> left_join(functional_groups, by = "species")
+
+# Get order and family names using `taxize`
+higher_taxonomy <- taxize::tax_name(
+  sci = c(raw_data$scientific_name |> unique()),
+  get = c("order", "family"))
+
+higher_taxonomy <- higher_taxonomy |>
+  mutate(
+    order = case_when(
+      query == "Lupulella mesomelas" ~ "Carnivora",
+      query == "Connochaetus taurinus" ~ "Artiodactyla",
+      query == "Herpestes sanguineus" ~ "Carnivora",
+      TRUE ~ order
+    )
+  )
+
+raw_data <- raw_data |>
+  left_join(higher_taxonomy, by = c("scientific_name" = "query"))
+```
+
+
+
+Total species richness and abundance per site
+
+```{r}
+total_summary <- raw_data |>
+  group_by(transect) |>
+  summarise(
+    total_sr = unique(species) |> length(),
+    total_a = sum(count)
+  ) |>
+  ungroup()
+
+totals <- raw_data |>
+  summarise(
+    transect = "Both",
+    total_sr = unique(species) |> length(),
+    total_a = sum(count)
+  )
+
+total_summary <- total_summary |>
+  bind_rows(totals) |>
+  mutate(transect = factor(transect, levels = c("floodplain", "mopane", "Both")))
+```
+
+
+Plot
+
+```{r}
+sr_total_plot <-
+  total_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = total_sr, fill = transect),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 25)
+  ) +
+  scale_x_discrete(
+    expand = c(0.25, 0.25),
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#ededed")) +
+  labs(
+    y = "Species Richness",
+    x = "Survey",
+    title = "a) Total"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+    title_size = 16
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+
+a_total_plot <-
+  total_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = total_a, fill = transect),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 800)
+  ) +
+  scale_x_discrete(
+    expand = c(0.25, 0.25),
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#ededed")) +
+  labs(
+    y = "Abundance",
+    x = "Survey"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14
+  ) +
+  theme(legend.position = "none", plot.margin = margin(10, 10, 10, 10))
+
+sr_total_plot + a_total_plot
+```
+
+
+
+Mean species richness and abundance per site (averaged across days surveyed)
+
+```{r}
+mean_summary <- raw_data |>
+  group_by(transect, Sample.Label) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup() |>
+  group_by(transect) |>
+  summarise(
+    mean_species_richness = mean(species_richness),
+    sr_std = sd(species_richness) / sqrt(length(species_richness)),
+    mean_abundance = mean(abundance),
+    a_std = sd(abundance) / sqrt(length(abundance)),
+  ) |>
+  ungroup()
+
+means <- mean_summary |>
+  summarise(
+    transect = "Both",
+    sr_std = sd(mean_species_richness) / sqrt(length(mean_species_richness)),
+    a_std = sd(mean_abundance) / sqrt(length(mean_abundance)),
+    mean_species_richness = mean(mean_species_richness),
+    mean_abundance = mean(mean_abundance),
+  )
+
+mean_summary <- mean_summary |>
+  bind_rows(means) |>
+  mutate(transect = factor(transect, levels = c("floodplain", "mopane", "Both")))
+```
+
+
+Plot
+
+```{r}
+sr_mean_plot <-
+  mean_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = mean_species_richness, fill = transect),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = mean_species_richness - sr_std,
+      ymax = mean_species_richness + sr_std,
+      x = transect),
+    width = 0.2,
+    linewidth = 0.5) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 15)
+  ) +
+  scale_x_discrete(
+    expand = c(0.25, 0.25),
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#ededed")) +
+  labs(
+    y = "Species Richness",
+    title = "b) Mean",
+    x = "Survey"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+    title_size = 16
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+
+a_mean_plot <-
+  mean_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = mean_abundance, fill = transect),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = mean_abundance - a_std,
+      ymax = mean_abundance + a_std,
+      x = transect),
+    width = 0.2,
+    linewidth = 0.5) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 200)
+  ) +
+  scale_x_discrete(
+    expand = c(0.25, 0.25),
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#ededed")) +
+  labs(
+    y = "Abundance",
+    x = "Survey"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14
+  ) +
+  theme(legend.position = "none", plot.margin = margin(10, 10, 10, 10))
+
+sr_mean_plot + a_mean_plot
+
+sr_total_plot + a_total_plot + sr_mean_plot + a_mean_plot
+ggsave("2023/figures/species_richness_abundance_terrestrial.png", width = 8, height = 8)
+```
+
+
+Alternative point and range plots instead of bar plots
+
+```{r}
+herbivore_summary <- raw_data |>
+  group_by(transect, Sample.Label) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup()
+
+herbivore_summary_all <- raw_data |>
+  filter(Sample.Label != 4) |>
+  group_by(Sample.Label) |>
+  summarise(
+    transect = "Both",
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup()
+
+herbivore_summary <- herbivore_summary |>
+  bind_rows(herbivore_summary_all) |>
+  mutate(transect = factor(transect, levels = c("floodplain", "mopane", "Both")))
+
+sr_mean_plot <-
+  herbivore_summary |>
+  ggplot() +
+  stat_summary(
+    aes(x = transect, y = species_richness, colour = transect),
+    fun = mean,
+    geom = "pointrange",
+    fun.min = min,
+    fun.max = max,
+    size = 0.5,
+    linewidth = 1
+  ) +
+  scale_x_discrete(
+    expand = c(0.25, 0.25),
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_colour_manual(values = c("#66C2A5", "#FC8D62", "#4a4a4a")) +
+  labs(
+    y = "Species Richness",
+    x = "Survey",
+    title = "b) Mean"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_mean_plot
+
+a_mean_plot <-
+  herbivore_summary |>
+  ggplot() +
+  stat_summary(
+    aes(x = transect, y = abundance, colour = transect),
+    fun = mean,
+    geom = "pointrange",
+    fun.min = min,
+    fun.max = max,
+    size = 0.5,
+    linewidth = 1
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(50, 300)
+  ) +
+  scale_x_discrete(
+    expand = c(0.25, 0.25),
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_colour_manual(values = c("#66C2A5", "#FC8D62", "#4a4a4a")) +
+  labs(
+    y = "Abundance",
+    x = "Survey"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+    title_size = 16
+  ) +
+  theme(legend.position = "none", plot.margin = margin(10, 10, 10, 10))
+a_mean_plot
+
+sr_mean_plot + a_mean_plot
+
+sr_total_plot + a_total_plot + sr_mean_plot + a_mean_plot
+ggsave("2023/figures/species_richness_abundance_terrestrial_v2.png", width = 8, height = 8)
+```
+
+
+Maximum daily species richness and abundance per transect and maximum cumulative species richness across both transects
+
+```{r}
+max_summary <- raw_data |>
+  group_by(transect, Sample.Label) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup() |>
+  group_by(transect) |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance)
+  ) |>
+  ungroup()
+
+max_overall <- raw_data |>
+  group_by(Sample.Label) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup() |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance),
+    transect = "Both"
+  ) |>
+  ungroup()
+
+max_summary <- max_summary |>
+  bind_rows(max_overall) |>
+  mutate(transect = factor(transect, levels = c("floodplain", "mopane", "Both")))
+
+sr_max_plot <-
+  max_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = max_species_richness, fill = transect),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 18)
+  ) +
+  scale_x_discrete(
+    expand = c(0.25, 0.25),
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#ededed")) +
+  labs(
+    y = "Maximum Species Richness",
+    title = "a)",
+    x = "Survey",
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_max_plot
+
+a_max_plot <-
+  max_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = max_abundance, fill = transect),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 300)
+  ) +
+  scale_x_discrete(
+    expand = c(0.25, 0.25),
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#ededed")) +
+  labs(
+    y = "Maximum Abundance",
+    x = "Survey",
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+a_max_plot
+
+sr_max_plot + a_max_plot
+```
+
+
+Box plots of daily species richness per transect and daily cumulative richness across all transects
+
+```{r}
+summary <- raw_data |>
+  group_by(transect, Sample.Label) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup()
+
+overall <- raw_data |>
+  group_by(Sample.Label) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count),
+    transect = "Both"
+  ) |>
+  ungroup() |>
+  filter(Sample.Label != 4)
+
+summary <- summary |>
+  bind_rows(overall) |>
+  mutate(transect = factor(transect, levels = c("floodplain", "mopane", "Both")))
+
+sr_boxplot <-
+  summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = species_richness, x = transect, fill = transect),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_x_discrete(
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 18)
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#ededed")) +
+  labs(
+    y = "Species Richness",
+    title = "b)",
+    x = "Survey",
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_boxplot
+```
+
+
+Box plots of daily abundance for each site then daily abundance summing all sites
+
+```{r}
+a_boxplot <-
+  summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = abundance, x = transect, fill = transect),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_x_discrete(
+    labels = c("Floodplain", "Mopane", "Both")
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 300)
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#ededed")) +
+  labs(
+    y = "Abundance",
+    x = "Survey",
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+a_boxplot
+
+sr_boxplot + a_boxplot
+
+sr_max_plot + a_max_plot + sr_boxplot + a_boxplot
+ggsave("2023/figures/max_species_richness_abundance_and_boxplots_herbivores.png", width = 9, height = 9)
+```
+
+
+Calculate summaries of mammal orders
+
+```{r}
+orders_summary <- raw_data |>
+  group_by(transect, order) |>
+  summarise(
+    total_sr = unique(species) |> length(),
+    total_a = sum(count)
+  ) |>
+  ungroup()
+
+orders_totals <- raw_data |>
+  group_by(order) |>
+  summarise(
+    transect = "Both",
+    total_sr = unique(species) |> length(),
+    total_a = sum(count)
+  ) |>
+  ungroup()
+
+orders_summary <- orders_summary |>
+  complete(transect, order, fill = list(total_sr = 0, total_a = 0)) |>
+  bind_rows(orders_totals) |>
+  mutate(
+    transect = factor(transect, levels = c("floodplain", "mopane", "Both")),
+    order = factor(order, levels = c("Artiodactyla", "Perissodactyla", "Proboscidea", "Carnivora", "Primates", "Rodentia", "Struthioniformes"))
+  )
+```
+
+
+Plot
+
+```{r}
+orders_sr_plot <-
+  orders_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = total_sr, fill = order),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 12)
+  ) +
+  scale_x_discrete(labels = c("Floodplain", "Mopane", "Both")) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Species Richness",
+    x = "Survey",
+    fill = "Order"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 18,
+    axis_title_size = 20,
+    legend_text_size = 18,
+    legend_title_size = 19
+  ) +
+  theme(
+    plot.margin = margin(10, 20, 10, 10),
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "bottom"
+  )
+
+orders_a_plot <-
+  orders_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = total_a, fill = order),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 450)
+  ) +
+  scale_x_discrete(labels = c("Floodplain", "Mopane", "Both")) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Abundance",
+    x = "Survey",
+    fill = "Order"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 18,
+    axis_title_size = 20,
+    legend_text_size = 18,
+    legend_title_size = 19
+  ) +
+  theme(
+    plot.margin = margin(10, 10, 10, 10),
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "bottom"
+  )
+
+design <- "
+12
+33
+"
+
+orders_sr_plot +
+  orders_a_plot +
+  guide_area() +
+  patchwork::plot_layout(design = design, guides = "collect", heights = c(7, 1))
+ggsave("2023/figures/orders_vertebrates_terrestrial.png", width = 12, height = 5.5)
+```
+
+
+Maximum daily richness and abundance per transect and maximum cumulative species richness across both transects
+
+```{r}
+orders_summary <- raw_data |>
+  group_by(transect, Sample.Label, order) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup() |>
+  group_by(transect, order) |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance)
+  ) |>
+  ungroup()
+
+orders_overall <- raw_data |>
+  filter(Sample.Label != 4) |>
+  group_by(Sample.Label, order) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup() |>
+  group_by(order) |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance),
+    transect = "Both"
+  ) |>
+  ungroup()
+
+orders_summary <- orders_summary |>
+  bind_rows(orders_overall) |>
+  complete(transect, order, fill = list(max_species_richness = 0, max_abundance = 0)) |>
+  mutate(
+    transect = factor(transect, levels = c("floodplain", "mopane", "Both")),
+    order = factor(order, levels = c("Artiodactyla", "Perissodactyla", "Proboscidea", "Carnivora", "Primates", "Rodentia", "Struthioniformes"))
+  )
+
+orders_sr_plot <-
+  orders_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = max_species_richness, fill = order),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_x_discrete(labels = c("Floodplain", "Mopane", "Both")) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 9)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Maximum Species Richness",
+    x = "Survey",
+    fill = "Order"
+  ) +
+  guides(fill = guide_legend(byrow = TRUE)) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 18,
+    axis_title_size = 20,
+    legend_text_size = 18,
+    legend_title_size = 19
+  ) +
+  theme(
+    plot.margin = margin(10, 20, 10, 10),
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "top"
+  )
+orders_sr_plot
+
+orders_a_plot <-
+  orders_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = transect, y = max_abundance, fill = order),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_x_discrete(labels = c("Floodplain", "Mopane", "Both")) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    #limits = c(0, 500)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Maximum Abundance",
+    x = "Survey",
+    fill = "Order"
+  ) +
+  guides(fill = guide_legend(byrow = TRUE)) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 18,
+    axis_title_size = 20,
+    legend_text_size = 18,
+    legend_title_size = 19
+  ) +
+  theme(
+    plot.margin = margin(10, 10, 10, 10),
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "top"
+  )
+orders_a_plot
+
+design <- "
+12
+33
+"
+
+orders_sr_plot +
+  orders_a_plot +
+  guide_area() +
+  patchwork::plot_layout(design = design, guides = "collect", heights = c(7, 1))
+ggsave("2023/figures/max_richness_abundance_orders_herbivores.png", width = 12, height = 5.5)
+```
+
+
+Box plots of daily cumulative richness and abundance across all sites
+
+```{r}
+orders_summary <- raw_data |>
+  filter(Sample.Label != 4) |>
+  group_by(Sample.Label, order) |>
+  summarise(
+    species_richness = unique(species) |> length(),
+    abundance = sum(count)
+  ) |>
+  ungroup() |>
+  complete(Sample.Label, order, fill = list(species_richness = 0, abundance = 0))
+
+sr_orders_boxplot <-
+  orders_summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = species_richness, x = order, fill = order),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 9)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Species Richness",
+    x = "Order"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_orders_boxplot
+
+a_orders_boxplot <-
+  orders_summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = abundance, x = order, fill = order),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 130)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Abundance",
+    x = "Order"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+a_orders_boxplot
+
+sr_orders_boxplot + a_orders_boxplot
+
+ggsave("2023/figures/richness_abundance_boxplots_orders_herbivores.png", width = 17, height = 5.5)
+```
+
+
+Abundances by species
+
+```{r}
+species_abundance_summary <- raw_data |>
+  group_by(common_name) |>
+  summarise(species_abundance = sum(count)) |>
+  ungroup()
+
+species_abundance_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = common_name, y = species_abundance),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5,
+    fill = "#ededed"
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 350)
+  ) +
+  labs(
+    y = "Species Abundance",
+    x = "Species"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 10,
+    axis_title_size = 13
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+
+ggsave("2023/figures/terrestrial_surveys_species_abundance.png", width = 6, height = 5)
+```
+
+
+Abundances by species, grouped by transect
+
+```{r}
+species_abundance_transect_summary <- raw_data |>
+  group_by(common_name, transect) |>
+  summarise(species_abundance = sum(count)) |>
+  ungroup() |>
+  complete(common_name, transect, fill = list(species_abundance = 0))
+
+species_abundance_transect_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = common_name, y = species_abundance, fill = transect),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 200)
+  ) +
+  scale_fill_brewer(
+    palette = "Set2",
+    labels = c("Floodplain", "Mopane")
+  ) +
+  labs(
+    y = "Species Abundance",
+    x = "Species",
+    fill = "Survey"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 10,
+    axis_title_size = 13,
+    legend_text_size = 10,
+    legend_title_size = 11
+  ) +
+  theme(
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "top",
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+
+ggsave("2023/figures/terrestrial_surveys_species_abundance_transects.png", width = 6, height = 5.5)
+```
+
+
+Set up appendix table
+
+```{r}
+appendix_table <- raw_data |>
+  group_by(transect, Sample.Label, common_name) |>
+  summarise(
+    abundance = sum(count)
+  ) |>
+  ungroup() |>
+  group_by(transect, common_name) |>
+  summarise(
+    maximum_abundance = max(abundance)
+  ) |>
+  ungroup() |>
+  group_by(common_name) |>
+  summarise(
+    transects_observed = paste0(transect, collapse = ", ") |> str_to_sentence(),
+    maximum_abundance = max(maximum_abundance)
+  ) |>
+  ungroup() |>
+  left_join(functional_groups) |> # Contains scientific names
+  left_join(higher_taxonomy, by = c("scientific_name" = "query")) |>
+  arrange(order, scientific_name) |>
+  select(common_name, scientific_name, transects_observed, maximum_abundance, order)
+
+#appendix_table |> write_csv("2023/data/terrestrial_appendix_table.csv")
+```

@@ -1,0 +1,1023 @@
+---
+title: "Riparian surveys"
+format: html
+---
+
+# Riparian surveys
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(patchwork)
+```
+
+
+Read in data
+
+```{r}
+riparian_survey_data <- read_xlsx("2023/data/waterbirds/bird_watching_data.xlsx")
+```
+
+
+## Birds
+
+Filter to birds
+
+```{r}
+bird_data <- riparian_survey_data |>
+  dplyr::filter(Type == "Bird", Species != "Ibis") |> # Remove "Ibis"
+  mutate(
+    Species = if_else(Species == "Harrier", "Pallid Harrier", Species), # Replace harrier with pallid harrier as Richard requested
+    survey_day = str_extract(ID, "\\d")
+  )
+
+bird_functional_groups <- read_csv("shared/reference/bird_functional_groups.csv")
+
+bird_data <- bird_data |> left_join(bird_functional_groups, by = "Species")
+```
+
+
+Total species richness and abundance per site across all days
+
+```{r}
+bird_data_total_summary <- bird_data |>
+  group_by(Site) |>
+  summarise(
+    total_sr = unique(Species) |> length(),
+    total_a = sum(Count)
+  ) |>
+  ungroup()
+
+bird_data_totals <- bird_data |>
+  summarise(
+    Site = "All",
+    total_sr = unique(Species) |> length(),
+    total_a = sum(Count)
+  )
+
+bird_data_total_summary <- bird_data_total_summary |>
+  bind_rows(bird_data_totals) |>
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All")))
+```
+
+
+Plot
+
+```{r}
+sr_total_plot <-
+  bird_data_total_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = total_sr, fill = Site),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 50),
+    breaks = seq(0, 50, by = 25)
+  ) +
+  scale_x_discrete(expand = c(0.25, 0.25)) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#ededed")) +
+  labs(
+    y = "Species Richness",
+    title = "a) Total"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+    title_size = 16
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+
+a_total_plot <-
+  bird_data_total_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = total_a, fill = Site),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 300)
+  ) +
+  scale_x_discrete(expand = c(0.25, 0.25)) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#ededed")) +
+  labs(y = "Abundance") +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14
+  ) +
+  theme(legend.position = "none", plot.margin = margin(10, 10, 10, 10))
+
+sr_total_plot + a_total_plot
+```
+
+
+Mean species richness and abundance per site (averaged across days surveyed) and mean species richness and abundance averaged across sites
+
+```{r}
+bird_data_mean_summary <- bird_data |>
+  group_by(Site, ID) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  group_by(Site) |>
+  summarise(
+    mean_species_richness = mean(species_richness),
+    sr_std = sd(species_richness) / sqrt(length(species_richness)),
+    mean_abundance = mean(abundance),
+    a_std = sd(abundance) / sqrt(length(abundance)),
+  ) |>
+  ungroup()
+
+bird_data_means <- bird_data_mean_summary |>
+  summarise(
+    Site = "All",
+    sr_std = sd(mean_species_richness) / sqrt(length(mean_species_richness)),
+    a_std = sd(mean_abundance) / sqrt(length(mean_abundance)),
+    mean_species_richness = mean(mean_species_richness),
+    mean_abundance = mean(mean_abundance),
+  )
+
+bird_data_mean_summary <- bird_data_mean_summary |>
+  bind_rows(bird_data_means) |>
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All")))
+```
+
+
+Plot
+
+```{r}
+sr_mean_plot <-
+  bird_data_mean_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = mean_species_richness, fill = Site),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = mean_species_richness - sr_std,
+      ymax = mean_species_richness + sr_std,
+      x = Site),
+    width = 0.2,
+    linewidth = 0.5) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 15)
+  ) +
+  scale_x_discrete(expand = c(0.25, 0.25)) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#ededed")) +
+  labs(
+    y = "Species Richness",
+    title = "b) Mean"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+
+a_mean_plot <-
+  bird_data_mean_summary |>
+  ggplot() +
+  geom_col(aes(x = Site, y = mean_abundance, fill = Site),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = mean_abundance - a_std,
+      ymax = mean_abundance + a_std,
+      x = Site),
+    width = 0.2,
+    linewidth = 0.5) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 35)
+  ) +
+  scale_x_discrete(expand = c(0.25, 0.25)) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#ededed")) +
+  labs(y = "Abundance") +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+    title_size = 16
+  ) +
+  theme(legend.position = "none", plot.margin = margin(10, 10, 10, 10))
+
+sr_mean_plot + a_mean_plot
+```
+
+
+Alternative to bar plots
+
+```{r}
+bird_data_summary <- bird_data |>
+  group_by(Site, survey_day) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup()
+
+bird_data_summary_all <- bird_data |>
+  group_by(survey_day) |>
+  summarise(
+    Site = "All",
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup()
+
+bird_data_summary <- bird_data_summary |>
+  bind_rows(bird_data_summary_all) |>
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All")))
+
+sr_mean_plot <-
+  bird_data_summary |>
+  ggplot() +
+  stat_summary(
+    aes(x = Site, y = species_richness, colour = Site),
+    fun = mean,
+    geom = "pointrange",
+    fun.min = min,
+    fun.max = max,
+    size = 0.5,
+    linewidth = 1
+  ) +
+  scale_x_discrete(expand = c(0.25, 0.25)) +
+  scale_colour_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#4a4a4a")) +
+  labs(
+    y = "Species Richness",
+    title = "b) Mean"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_mean_plot
+
+a_mean_plot <-
+  bird_data_summary |>
+  ggplot() +
+  stat_summary(
+    aes(x = Site, y = abundance, colour = Site),
+    fun = mean,
+    geom = "pointrange",
+    fun.min = min,
+    fun.max = max,
+    size = 0.5,
+    linewidth = 1
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 90)
+  ) +
+  scale_x_discrete(expand = c(0.25, 0.25)) +
+  scale_colour_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#4a4a4a")) +
+  labs(y = "Abundance") +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+    title_size = 16
+  ) +
+  theme(legend.position = "none", plot.margin = margin(10, 10, 10, 10))
+a_mean_plot
+
+sr_mean_plot + a_mean_plot
+
+sr_total_plot + a_total_plot + sr_mean_plot + a_mean_plot
+ggsave("2023/figures/species_richness_abundance_birds_v2.png", width = 7, height = 7)
+```
+
+
+Maximum species richness across survey dates and maximum cumulative species richness across all sites across survey dates (?)
+
+```{r}
+bird_data_max_summary <- bird_data |>
+  group_by(Site, survey_day) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  group_by(Site) |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance)
+  ) |>
+  ungroup()
+
+bird_data_max_overall <- bird_data |>
+  group_by(survey_day) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance),
+    Site = "All"
+  ) |>
+  ungroup()
+
+bird_data_max_summary <- bird_data_max_summary |>
+  bind_rows(bird_data_max_overall) |>
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All")))
+
+sr_max_plot <-
+  bird_data_max_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = max_species_richness, fill = Site),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 30)
+  ) +
+  scale_x_discrete(expand = c(0.25, 0.25)) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#ededed")) +
+  labs(
+    y = "Maximum Species Richness",
+    title = "a)"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_max_plot
+```
+
+
+Maximum abundance across survey dates and maximum cumulative abundance across all sites across survey dates
+
+```{r}
+a_max_plot <-
+  bird_data_max_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = max_abundance, fill = Site),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 90)
+  ) +
+  scale_x_discrete(expand = c(0.25, 0.25)) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#ededed")) +
+  labs(
+    y = "Maximum Abundance"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+a_max_plot
+
+sr_max_plot + a_max_plot
+```
+
+
+Box plots of daily species richness per site and daily cumulative richness across all sites
+
+```{r}
+bird_data_summary <- bird_data |>
+  group_by(Site, survey_day) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup()
+
+bird_data_overall <- bird_data |>
+  group_by(survey_day) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count),
+    Site = "All"
+  ) |>
+  ungroup()
+
+bird_data_summary <- bird_data_summary |>
+  bind_rows(bird_data_overall) |>
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All")))
+
+sr_boxplot <-
+  bird_data_summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = species_richness, x = Site, fill = Site),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 30)
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#ededed")) +
+  labs(
+    y = "Species Richness",
+    title = "b)"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_boxplot
+```
+
+
+Box plots of daily abundance for each site then daily abundance summing all sites
+
+```{r}
+a_boxplot <-
+  bird_data_summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = abundance, x = Site, fill = Site),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 90)
+  ) +
+  scale_fill_manual(values = c("#66C2A5", "#FC8D62", "#8DA0CB", "#ededed")) +
+  labs(
+    y = "Abundance"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+a_boxplot
+
+sr_boxplot + a_boxplot
+
+sr_max_plot + a_max_plot + sr_boxplot + a_boxplot
+ggsave("2023/figures/max_species_richness_abundance_and_boxplots_birds.png", width = 9, height = 9)
+```
+
+
+Calculate summaries of feeding functional groups
+
+```{r}
+bird_functional_groups_summary <- bird_data |>
+  group_by(Site, survey_day, functional_group) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  group_by(Site, functional_group) |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance)
+  ) |>
+  ungroup()
+
+bird_functional_groups_totals <- bird_data |>
+  group_by(survey_day, functional_group) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  group_by(functional_group) |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance),
+    Site = "All"
+  ) |>
+  ungroup()
+
+bird_functional_groups_summary <- bird_functional_groups_summary |>
+  bind_rows(bird_functional_groups_totals) |>
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All")))
+```
+
+
+Plot
+
+```{r}
+functional_groups_sr_plot <-
+  bird_functional_groups_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = max_species_richness, fill = functional_group),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 15)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Maximum Species Richness",
+    fill = "Functional Group"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 18,
+    axis_title_size = 20,
+    legend_text_size = 18,
+    legend_title_size = 19
+  ) +
+  theme(
+    plot.margin = margin(10, 20, 10, 10),
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "top"
+  )
+
+functional_groups_a_plot <-
+  bird_functional_groups_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = max_abundance, fill = functional_group),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 50)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Maximum Abundance",
+    fill = "Functional Group"
+  ) +
+  guides(fill = guide_legend(byrow = TRUE)) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 18,
+    axis_title_size = 20,
+    legend_text_size = 18,
+    legend_title_size = 19
+  ) +
+  theme(
+    plot.margin = margin(10, 10, 10, 10),
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "top"
+  )
+
+design <- "
+12
+33
+"
+
+functional_groups_sr_plot +
+  functional_groups_a_plot +
+  guide_area() +
+  patchwork::plot_layout(design = design, guides = "collect", heights = c(7, 1))
+ggsave("2023/figures/max_richness_abundance_functional_groups_birds.png", width = 12, height = 5.5)
+```
+
+
+Box plots
+
+```{r}
+bird_functional_groups_summary <- bird_data |>
+  group_by(survey_day, functional_group) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup()
+
+sr_functional_groups_boxplot <-
+  bird_functional_groups_summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = species_richness, x = functional_group, fill = functional_group),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 13)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Species Richness",
+    x = "Functional Group"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_functional_groups_boxplot
+
+a_functional_groups_boxplot <-
+  bird_functional_groups_summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = abundance, x = functional_group, fill = functional_group),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 50)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Abundance",
+    x = "Functional Group"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+a_functional_groups_boxplot
+
+sr_functional_groups_boxplot + a_functional_groups_boxplot
+
+ggsave("2023/figures/richness_abundance_boxplots_functional_groups_birds.png", width = 12, height = 5.5)
+```
+
+
+## Other vertebrates
+
+Tidy data
+
+```{r}
+mammal_reptile_data <- riparian_survey_data |>
+  filter(Type %in% c("Mammal", "Reptile"))
+
+mammal_reptile_functional_groups <- read_csv("shared/reference/mammal_reptile_functional_groups_riparian.csv")
+
+mammal_reptile_data <- mammal_reptile_data |>
+  left_join(mammal_reptile_functional_groups, by = "Species") |>
+  mutate(survey_day = str_extract(ID, "\\d"))
+```
+
+
+Summarise data into functional groups
+
+```{r}
+verts_functional_groups_summary <- mammal_reptile_data |>
+  group_by(Site, survey_day, functional_group) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  group_by(Site, functional_group) |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance)
+  ) |>
+  ungroup()
+
+verts_functional_groups_overall <- mammal_reptile_data |>
+  group_by(survey_day, functional_group) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  group_by(functional_group) |>
+  summarise(
+    max_species_richness = max(species_richness),
+    max_abundance = max(abundance),
+    Site = "All"
+  ) |>
+  ungroup()
+
+verts_functional_groups_summary <- verts_functional_groups_summary |>
+  complete(Site, functional_group, fill = list(max_species_richness = 0, max_abundance = 0)) |>
+  bind_rows(verts_functional_groups_overall) |>
+  mutate(
+    Site = factor(Site, levels = c("A", "B", "C", "All")),
+    functional_group = factor(functional_group, levels = c("Herbivore", "Carnivore", "Omnivore"))
+  )
+```
+
+
+```{r}
+vert_functional_groups_sr_plot <-
+  verts_functional_groups_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = max_species_richness, fill = functional_group),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    #limits = c(0, 7)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Maximum Species Richness",
+    fill = "Functional Group"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 18,
+    axis_title_size = 20,
+    legend_text_size = 18,
+    legend_title_size = 19
+  ) +
+  theme(
+    plot.margin = margin(10, 20, 10, 10),
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "top"
+  )
+
+vert_functional_groups_a_plot <-
+  verts_functional_groups_summary |>
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = max_abundance, fill = functional_group),
+    position = position_dodge2(padding = 0),
+    colour = "#141414",
+    width = 0.7,
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    #limits = c(0, 500)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Maximum Abundance",
+    fill = "Functional Group"
+  ) +
+  guides(fill = guide_legend(byrow = TRUE)) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 18,
+    axis_title_size = 20,
+    legend_text_size = 18,
+    legend_title_size = 19
+  ) +
+  theme(
+    plot.margin = margin(10, 10, 10, 10),
+    legend.key.size = unit(0.4, "cm"),
+    legend.position = "top"
+  )
+
+design <- "
+12
+33
+"
+
+vert_functional_groups_sr_plot +
+  vert_functional_groups_a_plot +
+  guide_area() +
+  patchwork::plot_layout(design = design, guides = "collect", heights = c(7, 1))
+ggsave("2023/figures/max_richness_abundance_functional_groups_mammals_reptiles.png", width = 12, height = 5.5)
+```
+
+
+Box plots
+
+```{r}
+verts_functional_groups_summary <- mammal_reptile_data |>
+  group_by(survey_day, functional_group) |>
+  summarise(
+    species_richness = unique(Species) |> length(),
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  complete(survey_day, functional_group, fill = list(species_richness = 0, abundance = 0))
+
+sr_functional_groups_boxplot <-
+  verts_functional_groups_summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = species_richness, x = functional_group, fill = functional_group),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 7)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Species Richness",
+    x = "Functional Group"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+sr_functional_groups_boxplot
+
+a_functional_groups_boxplot <-
+  verts_functional_groups_summary |>
+  ggplot() +
+  geom_boxplot(
+    aes(y = abundance, x = functional_group, fill = functional_group),
+    width = 0.6,
+    colour = "#141414",
+    linewidth = 0.5
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 140)
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    y = "Abundance",
+    x = "Functional Group"
+  ) +
+  pilot::theme_pilot(
+    axes = "lb",
+    grid = "h",
+    axis_text_size = 12,
+    axis_title_size = 14,
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title.position = "plot",
+    plot.title = element_text(margin = margin(0, 0, 20, 0)),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+a_functional_groups_boxplot
+
+sr_functional_groups_boxplot + a_functional_groups_boxplot
+
+ggsave("2023/figures/richness_abundance_boxplots_functional_groups_mammals_reptiles.png", width = 12, height = 5.5)
+```
+
+
+Tidy bird data for appendix table
+
+```{r}
+bird_table <- bird_data |>
+  group_by(Site, ID, Species) |>
+  summarise(
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  group_by(Site, Species) |>
+  summarise(
+    maximum_abundance = max(abundance)
+  ) |>
+  ungroup() |>
+  group_by(Species) |>
+  summarise(
+    sites_observed = paste0(Site, collapse = ", "),
+    maximum_abundance = max(maximum_abundance)
+  ) |>
+  ungroup() |>
+  left_join(bird_functional_groups) |>
+  mutate(
+    Species = str_to_sentence(Species),
+    scientific_name = auk::ebird_species(Species, type = "scientific")
+  ) |>
+  arrange(functional_group)
+
+bird_table |> filter(is.na(scientific_name)) |> pull(Species)
+
+# Can fix NAs here but I did it manually in Excel, then sorted data alphabetically in Excel as well.
+
+#bird_table |> write_csv("2023/data/birds_appendix_table.csv")
+```
+
+
+Tidy mammal and reptile data for appendix table
+
+```{r}
+mammal_reptile_table <- mammal_reptile_data |>
+  group_by(Site, ID, Species) |>
+  summarise(
+    abundance = sum(Count)
+  ) |>
+  ungroup() |>
+  group_by(Site, Species) |>
+  summarise(
+    maximum_abundance = max(abundance)
+  ) |>
+  ungroup() |>
+  group_by(Species) |>
+  summarise(
+    sites_observed = paste0(Site, collapse = ", "),
+    maximum_abundance = max(maximum_abundance)
+  ) |>
+  ungroup() |>
+  left_join(mammal_reptile_functional_groups) |>
+  mutate(Species = str_to_sentence(Species)) |>
+  arrange(functional_group)
+
+#mammal_reptile_table |> write_csv("2023/data/riparian_mammals_reptiles_appendix_table.csv")
+```

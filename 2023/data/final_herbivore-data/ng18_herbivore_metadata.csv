@@ -1,0 +1,6 @@
+﻿date,year,season,time_start,time_finish,weather_start,temp_start,weather_finish,odo_start,odo_end,transect_length,observers,driver,guide,id
+04/07/2023,2023,dry,07:24:00,10:45:00,clear,6,clear,0,9.46,9.46,"Monique, Robert, Will, Jessica, Tempe, Neil, April, Davide, ",Ona,Ona,1
+05/07/2023,2023,dry,07:25:00,11:29:00,clear,,clear,0,19.7,19.7,"Tali, Fletcher, Cooper, Privelage, Em, Dan, Dave, Neil",Parker,Parker,2
+06/07/2024,2023,dry,07:52,12:30,clear ,,clear windy ,0,19.6,19.6,"Richard, Neil, Emma, Olivia, Oliver, Venus, Murphy",Parker,Parker,3
+07/07/2025,2023,dry,07:35,09:35,clear ,,clear windy ,0,10.57,10.57,"Fletcher, Alistair, Tempe, Olivia, Tali, Cooper, Murphy",Parker,Parker,4.1
+07/07/2026,2024,dry,09:45,11:34,clear ,,clear windy ,10.57,19.81,9.24,"Fletcher, Alistair, Tempe, Olivia, Tali, Cooper, Murphy",Parker,Parker,4.2

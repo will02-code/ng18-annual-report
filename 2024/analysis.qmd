@@ -1,0 +1,162 @@
+---
+title: "NG18 Khwai Private Reserve 2024 Monitoring Report"
+format:
+  html
+editor_options:
+  chunk_output_type: console
+---
+
+# packages
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(paletteer)
+library(patchwork)
+here::i_am("2024/analysis.qmd")
+library(here)
+my_theme <- function(title_size = 22, text_size = 20, ...) {
+  theme_bw() +
+    theme(
+      plot.title = element_text(
+        size = 22,
+        face = "bold",
+        colour = "black",
+        family = "tachoma"
+      ),
+      strip.text = element_text(size = text_size),
+      strip.background.x = element_rect(fill = "white", colour = "black"),
+      axis.text = element_text(size = text_size, colour = "black"),
+      axis.title = element_text(size = title_size, colour = "black"),
+      legend.title = element_text(size = title_size, colour = "black"),
+      legend.text = element_text(size = text_size, colour = "black"),
+      ...
+    )
+}
+```
+
+# eBird
+
+```{r}
+
+ebird <- read_csv("2024/data/Botswana_observations_2024.csv")
+ebird %>%
+  mutate(
+    date = mdy(`Observation date`),
+    common_name = str_extract(Species, "^.*\\(") %>% str_remove(" \\("),
+    scientific_name = str_extract(Species, "\\(.*\\)") %>%
+      str_remove_all("\\(|\\)"),
+  ) %>%
+  filter(date >= ymd("2024-07-01") & date < ymd("2024-07-08")) %>%
+  mutate(day = day(date)) %>%
+  select(Species, Count, date, common_name, scientific_name, day) %>%
+  group_by(Species) %>%
+  reframe(
+    n = sum(Count),
+    days = paste0(day, collapse = "", sep = ", ") %>%
+      str_remove(", $") %>%
+      paste0(" July"),
+    scientific_name = scientific_name,
+    common_name = common_name
+  ) %>%
+  distinct() %>%
+  View
+```
+
+# Invertebrates
+
+```{r}
+botswana_pitfall_2024 <- read_excel("2024/data/Botswana_pitfall_2024.xlsx")
+#cleaning
+clean_inverts <- botswana_pitfall_2024 %>%
+  mutate(
+    Abundance = as.numeric(Abundance),
+    Beetle = as.numeric(Beetle),
+    Ant = as.numeric(Ant),
+    Spider = as.numeric(Spider),
+    Fly = as.numeric(Fly),
+    Termite = as.numeric(Termite),
+    Date = as.factor(Date)
+  ) %>%
+  pivot_longer(
+    cols = c("Ant", "Beetle", "Spider", "Fly", "Termite"),
+    names_to = "morph",
+    values_to = "count"
+  ) %>%
+  replace_na(list(count = 0))
+#abundance boxplot
+invert_abundance <- clean_inverts %>%
+  select(Date, Site, morph, count, Rep) %>%
+  group_by(Date, Site, Rep) %>%
+  summarise(Abundance = sum(count))
+invert_abund_plot <- invert_abundance %>%
+  ggplot(aes(x = Site)) +
+  geom_boxplot(aes(y = Abundance, fill = Site)) +
+  theme_bw() +
+  scale_fill_paletteer_d("nationalparkcolors::Acadia", direction = 1) +
+  scale_x_discrete(labels = c("Burned", "Unburned")) +
+  theme(
+    legend.position = "none",
+    legend.text = element_text(colour = "black", size = 16),
+    legend.title = element_text(colour = "black", size = 18),
+    axis.text = element_text(colour = "black", size = 16),
+    axis.title = element_text(colour = "black", size = 18),
+  ) +
+  labs(y = "Invertebrate abundance", x = "Treatment")
+invert_richness <- clean_inverts %>%
+  filter(count > 0) %>%
+  select(Date, Site, Rep, morph) %>%
+  group_by(Date, Site, Rep) %>%
+  summarise(Richness = n())
+invert_rich_plot <- invert_richness %>%
+  ggplot(aes(x = Site)) +
+  geom_boxplot(aes(y = Richness, fill = Site)) +
+  theme_bw() +
+  scale_fill_paletteer_d("nationalparkcolors::Acadia", direction = 1) +
+  scale_x_discrete(labels = c("Burned", "Unburned")) +
+  theme(
+    legend.position = "none",
+    legend.text = element_text(colour = "black", size = 16),
+    legend.title = element_text(colour = "black", size = 18),
+    axis.text = element_text(colour = "black", size = 16),
+    axis.title = element_text(colour = "black", size = 18),
+  ) +
+  labs(y = "Invertebrate richness", x = "Treatment")
+invert_rich_plot + invert_abund_plot
+
+library(glmmTMB)
+richness_model <- glmmTMB(
+  Richness ~ Site + Date + (1 | Rep),
+  data = invert_richness,
+  family = gaussian()
+)
+richness_model_null <- glmmTMB(
+  Richness ~ Date + (1 | Rep),
+  data = invert_richness,
+  family = gaussian()
+)
+library(performance)
+check_model(richness_model)
+diagnose(richness_model)
+sims <- DHARMa::simulateResiduals(richness_model)
+plot(sims)
+summary(richness_model)
+
+
+abundance_model <- glmmTMB(
+  Abundance ~ Site + Date + (1 | Rep),
+  data = invert_abundance,
+  family = nbinom1()
+)
+abundance_model_null <- glmmTMB(
+  Abundance ~ Date + (1 | Rep),
+  data = invert_abundance,
+  family = nbinom1()
+)
+diagnose(abundance_model)
+check_model(abundance_model)
+sims <- DHARMa::simulateResiduals(abundance_model)
+plot(sims)
+summary(abundance_model)
+anova(abundance_model, abundance_model_null)
+```

@@ -1,0 +1,74 @@
+---
+title: "sorting_eBird_data"
+format: html
+---
+
+# Sorting eBird data
+
+Make an Excel file with two columns: Species and Date. Copy and paste the text from the checklists into the Species column. You will get the common species name and 'Number observed: X' on alternating rows. Remove rows where media has been uploaded for the species so you're left with only the alternating rows. Make sure the last species on the checklist has 'Number observed' recorded for it (I had to manually add it in because it wouldn't let me copy and paste it). I also recorded the date of the checklist in another column. Then run this script.
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+eBird_checklists <- readxl::read_xlsx("2023/data/eBird_checklists.xlsx")
+```
+
+```{r}
+eBird_checklists |> View()
+
+# Extract numbers of individuals observed for each species
+species_numbers <- eBird_checklists |>
+  filter(str_detect(Species, "Number observed")) |>
+  mutate(number_observed = str_extract(Species, "\\d+")) |>
+  select("number_observed")
+
+# Join column to original data frame
+eBird_data <- eBird_checklists |>
+  filter(!str_detect(Species, "Number observed")) |>
+  bind_cols(species_numbers) |>
+  mutate(Species = str_to_sentence(Species)) # Make sentence case
+
+# Add scientific names using eBird package `auk`
+eBird_data <- eBird_data |>
+  mutate(
+    scientific_name = auk::ebird_species(Species, type = "scientific")
+  )
+
+# A few NAs, most because of "grey" spelling instead of "gray"
+eBird_data |> filter(is.na(scientific_name)) |> pull(Species) |> unique()
+
+# Fill in NAs by manually looking up on eBird
+eBird_data <- eBird_data |>
+  mutate(
+    scientific_name = case_when(
+      Species == "Grey heron" ~ "Ardea cinerea",
+      Species == "African grey hornbill" ~ "Lophoceros nasutus",
+      Species == "Grey go-away-bird" ~ "Crinifer concolor",
+      Species == "Eurasian black-winged stilt" ~ "Himantopus himantopus",
+      TRUE ~ scientific_name
+    )
+  )
+
+# No more NAs
+eBird_data |> filter(is.na(scientific_name)) |> pull(Species) |> unique()
+
+# Summarise total counts per species
+
+eBird_data_summary <- eBird_data |>
+  arrange(Species, Date) |>
+  mutate(
+    number_observed = as.numeric(number_observed),
+    Date = gsub("^0", "", format(Date, format = "%d")) # Get day from date
+  ) |>
+  group_by(Species) |>
+  summarise(
+    scientific_name = first(scientific_name),
+    dates_observed = paste0(unique(Date), collapse = ", ") |> paste0(" July"), # Format dates observed
+    total_number_observed = sum(number_observed)
+  ) |>
+  arrange(scientific_name)
+
+eBird_data_summary |> write_csv("2023/data/eBird_data_summary.csv")
+```

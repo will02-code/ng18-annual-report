@@ -1,0 +1,1057 @@
+---
+title: "NG18 Khwai Private Reserve 2025 Monitoring Report"
+format:
+  html
+editor_options: 
+  chunk_output_type: console
+---
+
+# packages
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(Distance)
+library(paletteer)
+library(patchwork)
+here::i_am("2025/analysis.qmd")
+my_theme <- function(title_size = 22, text_size = 20, ...) {
+  theme_bw() +
+    theme(
+      plot.title = element_text(
+        size = 22,
+        face = "bold",
+        colour = "black",
+        family = "tachoma"
+      ),
+      strip.text = element_text(size = text_size),
+      strip.background.x = element_rect(fill = "white", colour = "black"),
+      axis.text = element_text(size = text_size, colour = "black"),
+      axis.title = element_text(size = title_size, colour = "black"),
+      legend.title = element_text(size = title_size, colour = "black"),
+      legend.text = element_text(size = text_size, colour = "black"),
+      ...
+    )
+}
+
+```
+
+# Bird Survey Analysis
+
+Read in and clean
+
+```{r}
+raw_waterbirds <- read_excel(
+  "2025/data/waterbirds/bird_survey_data2025.xlsx"
+)
+#Check for ambiguous species
+#Check grey headed heron (probably black headed heron)
+
+raw_waterbirds %>%
+  select(Species) %>%
+  unique() %>%
+  arrange(Species)
+
+cleaned_waterbirds <- raw_waterbirds %>%
+  mutate(
+    Species = str_to_sentence(Species),
+    Species = str_replace(Species, "caramant", "cormorant"),
+    Species = case_when(
+      Species == "Swamp hen" ~ "African swamphen",
+      Species == "Grey go-away bird" ~ "Grey go-away bird",
+      Species == "Gaber gos hawk" ~ "Gabar goshawk",
+      Species == "Meve's starling" ~ "Meves's starling",
+      Species == "Emerald spotted dove" ~ "Emerald-spotted wood dove",
+      Species == "Lilac breasted roller" ~ "Lilac-breasted roller",
+      Species == "Grey hornbill" ~ "African grey hornbill",
+      Species == "Red eyed dove" ~ "Red-eyed dove",
+      Species == "White back vulture" ~ "White-backed vulture",
+      Species == "Long-toed plover" ~ "Long-toed lapwing",
+      Species == "Greater long tailed cormorant" ~ "Great cormorant",
+      Species == "Ringneck dove" ~ "Ring-necked dove",
+      Species == "Fish eagle" ~ "African fish eagle",
+      Species == "Drongo" ~ "Fork-tailed drongo",
+      Species == "African gray hornbill" ~ "African grey hornbill",
+      Species == "Black smith lapwing" ~ "Blacksmith lapwing",
+      Species == "Bateleur eagle" ~ "Bateleur",
+      Species == "Cape turtle dove" ~ "Cape turtle-dove",
+      Species == "Namaqua" ~ "Namaqua dove",
+      Species == "African marsh harrier" ~ "Marsh harrier",
+      Species == "Capped wheat-eater" ~ "Capped wheatear",
+      Species == "Glossy starling" ~ "Cape starling",
+      Species == "Greater egret" ~ "Great egret",
+      Species == "Greater striped swallows" ~ "Greater striped swallow",
+      Species == "Long toed lapwing" ~ "Long-toed lapwing",
+      Species == "Morning dove" ~ "Mourning collared dove",
+      Species == "Painted snipe" ~ "Greater painted-snipe",
+      Species == "Purple gallinele" ~ "African swamphen",
+      Species == "Reed warbler" ~ "African reed warbler",
+      Species == "Stiped king-fisher" ~ "Striped kingfisher",
+      Species == "Yellow-billed ox pecker" ~ "Yellow-billed oxpecker",
+      TRUE ~ Species # Keeps unchanged species
+    ),
+    survey_day = str_extract(ID, "\\d"),
+    Year = as.factor(Year)
+  )
+bird_functional_groups <- read_csv("./shared/reference/bird_functional_groups.csv") %>%
+  mutate(Species = str_to_sentence(Species))
+
+cleaned_waterbirds <- cleaned_waterbirds |>
+  left_join(bird_functional_groups, by = "Species") %>%
+  filter(Type == "Bird")
+cleaned_waterbirds %>%
+  filter(Year == 2025) %>%
+  select(Species, Site, Count, functional_group) %>%
+  distinct() %>%
+  group_by(Species, Site, functional_group) %>%
+  summarise(Count = max(Count), ) %>%
+  group_by(`Common name` = Species, functional_group) %>%
+  summarise(
+    Sites = paste(Site, collapse = ", "),
+    `Maximum Count` = max(Count),
+  ) |>
+  View()
+
+
+```
+
+Total species richness and abundance (not split by day)
+
+```{r}
+results <- cleaned_waterbirds %>%
+  group_by(Year, Site) %>%
+
+  summarise(
+    Species_Richness = n_distinct(Species),
+    Species_Abundance = sum(Count, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+overall <- cleaned_waterbirds %>%
+  group_by(Year) %>%
+  summarise(
+    Site = "All",
+    Species_Richness = n_distinct(Species),
+    Species_Abundance = sum(Count, na.rm = TRUE)
+  )
+final_results <- bind_rows(results, overall) %>%
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All")))
+#Species richness
+rich <- final_results %>%
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = Species_Richness, fill = Year),
+    position = position_dodge()
+  ) +
+
+  scale_fill_paletteer_d("nationalparkcolors::Arches", direction = 1) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(colour = "black", size = 10),
+    axis.title = element_text(size = 10)
+  ) +
+  labs(y = "Total species richness")
+abund <- final_results %>%
+  ggplot() +
+  geom_col(
+    aes(x = Site, y = Species_Abundance, fill = Year),
+    position = position_dodge()
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches", direction = 1) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(colour = "black", size = 10),
+    axis.title = element_text(size = 10)
+  ) +
+  labs(y = "Total species abundance")
+
+rich +
+  abund +
+  plot_annotation(tag_levels = 'a', tag_suffix = ")") &
+
+  my_theme(
+    legend.position = "none",
+    plot.tag.position = c(0.25, 0.94),
+    plot.tag = element_text(size = 16)
+  )
+```
+
+Species richness and abundance split by day
+
+```{r}
+
+#Results with mean by day
+results_by_day <- cleaned_waterbirds %>%
+  group_by(Year, Site, survey_day) %>%
+
+  summarise(
+    Species_Richness = n_distinct(Species),
+    Species_Abundance = sum(Count, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+overall_by_day <- cleaned_waterbirds %>%
+  group_by(Year, survey_day) %>%
+  summarise(
+    Site = "All",
+    Species_Richness = n_distinct(Species),
+    Species_Abundance = sum(Count, na.rm = TRUE)
+  )
+
+# Combine both
+final_results_by_day <- bind_rows(results_by_day, overall_by_day) %>%
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All"))) %>%
+  group_by(Year, Site) %>%
+  summarise(
+    mean_rich = mean(Species_Richness),
+    se_rich = sd(Species_Richness) / sqrt(length(Species_Richness)),
+    mean_abund = mean(Species_Abundance),
+    se_abund = sd(Species_Abundance) / sqrt(length(Species_Abundance))
+  )
+#Mean richess with SE
+mean_rich <- final_results_by_day %>%
+  ggplot() +
+
+  geom_linerange(
+    aes(
+      x = Site,
+      ymin = mean_rich - se_rich,
+      ymax = mean_rich + se_rich,
+      colour = Year
+    ),
+    position = position_dodge(width = 0.2),
+    linewidth = 1
+  ) +
+  geom_point(
+    aes(x = Site, y = mean_rich, colour = Year),
+    position = position_dodge(width = 0.2),
+    size = 2
+  ) +
+  scale_color_paletteer_d("nationalparkcolors::Arches", direction = 1) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(colour = "black", size = 10),
+    axis.title = element_text(size = 10)
+  ) +
+  labs(y = "Mean species richness")
+#Mean abundance with SE
+mean_abund <- final_results_by_day %>%
+  ggplot() +
+
+  geom_linerange(
+    aes(
+      x = Site,
+      ymin = mean_abund - se_abund,
+      ymax = mean_abund + se_abund,
+      colour = Year,
+      width = 0.1
+    ),
+    position = position_dodge(width = 0.2),
+    linewidth = 1
+  ) +
+  geom_point(
+    aes(x = Site, y = mean_abund, colour = Year),
+    position = position_dodge(width = 0.2),
+    size = 2
+  ) +
+  scale_color_paletteer_d("nationalparkcolors::Arches", direction = 1) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(colour = "black", size = 10),
+    axis.title = element_text(size = 10)
+  ) +
+  labs(y = "Mean species abundance")
+plot_layout(ncol = 2, nrow = 2)
+rich +
+  my_theme(legend.position = "none") +
+  abund +
+  my_theme(legend.position = "none") +
+  mean_rich +
+  my_theme(legend.position = "none") +
+  mean_abund +
+  my_theme(legend.position = "none") +
+
+  plot_annotation(tag_levels = 'a', tag_suffix = ")") &
+
+  theme(
+    plot.tag.position = c(0.2, 0.94),
+    plot.tag = element_text(size = 20)
+  )
+
+
+```
+
+Functional groups
+
+```{r}
+functional_groups_by_day <- cleaned_waterbirds %>%
+  filter(!is.na(functional_group)) %>%
+  group_by(Year, Site, survey_day, functional_group) %>%
+
+  summarise(
+    Species_Richness = n_distinct(Species),
+    Species_Abundance = sum(Count, na.rm = TRUE)
+  ) %>%
+  ungroup()
+overall_functional_groups_by_day <- cleaned_waterbirds %>%
+  filter(!is.na(functional_group)) %>%
+  group_by(Year, survey_day, functional_group) %>%
+  summarise(
+    Site = "All",
+    Species_Richness = n_distinct(Species),
+    Species_Abundance = sum(Count, na.rm = TRUE)
+  )
+
+# Combine both
+final_func_group_results_by_day <- bind_rows(
+  functional_groups_by_day,
+  overall_functional_groups_by_day
+) %>%
+  mutate(Site = factor(Site, levels = c("A", "B", "C", "All")))
+
+
+#overall species richness by day (divided by functional groups)
+func_species_rich <- final_func_group_results_by_day %>%
+  filter(Site == "All") %>%
+  ggplot(aes(x = functional_group)) +
+  geom_boxplot(aes(y = Species_Richness, fill = Year)) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches", 1) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(colour = "black", size = 24),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    axis.title = element_text(colour = "black", size = 14),
+  ) +
+  labs(y = "Species richness", x = "Functional group")
+#overall species abundance by day (divided by functional groups)
+func_species_abund <- final_func_group_results_by_day %>%
+  filter(Site == "All") %>%
+  ggplot(aes(x = functional_group)) +
+  geom_boxplot(aes(y = Species_Abundance, fill = Year)) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches", 1) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(colour = "black", size = 24),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    axis.title = element_text(colour = "black", size = 14),
+  ) +
+  labs(y = "Species abundance", x = "Functional group")
+#Max species abundance by site (divided by functional groups)
+func_species_rich +
+  func_species_abund +
+  plot_annotation(tag_levels = 'a', tag_suffix = ")") &
+  my_theme(
+    legend.position = "none",
+    plot.tag.position = c(0.25, 0.94),
+    plot.tag = element_text(size = 20),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 30),
+    axis.text.y = element_text(size = 30),
+    axis.title.y = element_text(colour = "black", size = 30),
+    axis.title.x = element_text(colour = "black", size = 30)
+  )
+final_func_group_results_by_day %>%
+  group_by(Year, Site, functional_group) %>%
+  summarise(
+    max_rich = max(Species_Richness),
+    max_abund = max(Species_Abundance)
+  ) %>%
+  ggplot(aes(x = Site)) +
+  geom_col(
+    aes(y = max_abund, fill = functional_group),
+    position = position_dodge()
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches") +
+  my_theme(legend.position = "bottom") +
+  labs(y = "Maximum species abundance", x = "Site", fill = "Functional group") +
+  facet_wrap(~Year)
+#Max species richness by site (divided by functional groups)
+
+final_func_group_results_by_day %>%
+  group_by(Year, Site, functional_group) %>%
+  summarise(
+    max_rich = max(Species_Richness),
+    max_abund = max(Species_Abundance)
+  ) %>%
+  ggplot(aes(x = Site)) +
+  geom_col(
+    aes(y = max_rich, fill = functional_group),
+    position = position_dodge()
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Redwoods", 1) +
+  my_theme(legend.position = "bottom") +
+  labs(y = "Maximum species richness", x = "Site", fill = "Functional group") +
+  facet_wrap(~Year)
+
+
+```
+
+# Vertebrate species Cleaning
+
+```{r}
+clean_vertebrates <- raw_waterbirds %>%
+  filter(Type != "Bird") %>%
+  mutate(
+    functional_group = case_when(
+      Species == "Reed Buck" ~ "Herbivore",
+      Species == "Hippo" ~ "Herbivore",
+      Species == "Red Lechwe" ~ "Herbivore",
+      Species == "Crocodile" ~ "Carnivore",
+      Species == "Nile Crocodile" ~ "Carnivore",
+      Species == "Elephant" ~ "Herbivore",
+      Species == "Warthog" ~ "Omnivore",
+      Species == "Water Buck" ~ "Herbivore",
+      Species == "Water buck" ~ "Herbivore",
+      Species == "African Reed Buck" ~ "Herbivore",
+      Species == "Impala" ~ "Herbivore",
+      Species == "Lion" ~ "Carnivore",
+      Species == "Monitor Lizard" ~ "Carnivore",
+      Species == "Waterbuck" ~ "Herbivore",
+      Species == "Leopard" ~ "Carnivore",
+      Species == "Zebra" ~ "Herbivore",
+      Species == "Giraffe" ~ "Herbivore",
+      Species == "Baboon" ~ "Omnivore",
+      Species == "Water Monitor" ~ "Carnivore",
+      Species == "buffalo" ~ "Herbivore",
+      TRUE ~ Species
+    ),
+    survey_day = str_extract(ID, "\\d"),
+    Year = as.factor(Year)
+  )
+
+functional_groups_by_day_vert <- clean_vertebrates %>%
+  filter(!is.na(functional_group)) %>%
+  group_by(Year, Site, survey_day, functional_group) %>%
+
+  summarise(
+    Species_Richness = n_distinct(Species),
+    Species_Abundance = sum(Count, na.rm = TRUE)
+  ) %>%
+  ungroup()
+overall_functional_groups_by_day_vert <- clean_vertebrates %>%
+  filter(!is.na(functional_group)) %>%
+  group_by(Year, survey_day, functional_group) %>%
+  summarise(
+    Site = "All",
+    Species_Richness = n_distinct(Species),
+    Species_Abundance = sum(Count, na.rm = TRUE)
+  )
+
+# Combine both
+final_func_group_results_by_day_vert <- bind_rows(
+  functional_groups_by_day_vert,
+  overall_functional_groups_by_day_vert
+) %>%
+  mutate(
+    Site = factor(Site, levels = c("A", "B", "C", "All")),
+    functional_group = factor(
+      functional_group,
+      levels = c("Herbivore", "Carnivore", "Omnivore")
+    )
+  )
+final_func_group_results_by_day_summary_vert <- final_func_group_results_by_day_vert %>%
+  group_by(Year, Site, functional_group) %>%
+  summarise(
+    mean_rich = mean(Species_Richness),
+    se_rich = sd(Species_Richness) / sqrt(length(Species_Richness)),
+    mean_abund = mean(Species_Abundance),
+    se_abund = sd(Species_Abundance) / sqrt(length(Species_Abundance))
+  )
+
+
+```
+
+Plotting
+
+```{r}
+#overall species richness by day (divided by functional groups)
+
+waterbird_vert_daily_rich <- final_func_group_results_by_day_vert %>%
+  filter(Site == "All") %>%
+  ggplot(aes(x = functional_group)) +
+  geom_boxplot(aes(y = Species_Richness, fill = Year)) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches") +
+  my_theme(legend.position = "none") +
+  labs(y = "Species richness", x = "Functional group")
+#overall species abundance by day (divided by functional groups)
+waterbird_vert_daily_abund <- final_func_group_results_by_day_vert %>%
+  filter(Site == "All") %>%
+  ggplot(aes(x = functional_group)) +
+  geom_boxplot(aes(y = Species_Abundance, fill = Year)) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches") +
+  my_theme(legend.position = "none") +
+  labs(y = "Species abundance", x = "Functional group")
+#Max species abundance by site (divided by functional groups)
+waterbird_vert_daily_rich + waterbird_vert_daily_abund
+final_func_group_results_by_day_vert %>%
+  group_by(Year, Site, functional_group) %>%
+  summarise(
+    max_rich = max(Species_Richness),
+    max_abund = max(Species_Abundance)
+  ) %>%
+  ggplot(aes(x = Site)) +
+  geom_col(
+    aes(y = max_abund, fill = functional_group),
+    position = position_dodge()
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Redwoods") +
+  my_theme(legend.position = "bottom") +
+  labs(y = "Maximum species abundance", x = "Site", fill = "Functional group") +
+  facet_wrap(~Year)
+#Max species richness by site (divided by functional groups)
+
+final_func_group_results_by_day_vert %>%
+  group_by(Year, Site, functional_group) %>%
+  summarise(
+    max_rich = max(Species_Richness),
+    max_abund = max(Species_Abundance)
+  ) %>%
+  ggplot(aes(x = Site)) +
+  geom_col(
+    aes(y = max_rich, fill = functional_group),
+    position = position_dodge()
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Redwoods") +
+  my_theme(legend.position = "bottom") +
+  labs(y = "Maximum species richness", x = "Site", fill = "Functional group") +
+  facet_wrap(~Year)
+
+
+```
+
+## Herbivore/distance sampling Cleaning
+
+```{r}
+raw_data <- read_csv(
+  "2025/data/herbivores/ng18_herbivore_survey_data.csv"
+)
+#NOTE: Need to change the surveys from the first year (2023) to seperate into mopane and floodplain transects
+# I did this in the 2023 data based on maps of transects, so you can just copy across the data
+# from previous annual transects
+
+species_names <- read_csv(
+  "2025/data/herbivores/ng18_herbivore_species_list.csv"
+)
+cleaned_data <- raw_data |>
+  mutate(
+    day = str_extract(id, "^\\d+"),
+    year = case_when(
+      id >= 1 & id < 5 ~ "2023",
+      id >= 5 & id < 8 ~ "2024",
+      id >= 8 & id < 11 ~ "2025"
+    ),
+    id = factor(id),
+    type = case_when(
+      id == "1" ~ "Mopane",
+      id == "2.1" ~ "Mopane",
+      id == "2.2" ~ "Floodplain",
+      id == "3.1" ~ "Floodplain",
+      id == "3.2" ~ "Mopane",
+      id == "4.1" ~ "Floodplain",
+      id == "4.2" ~ "Mopane",
+      id == "5.1" ~ "Mopane",
+      id == "5.2" ~ "Floodplain",
+      id == "6.1" ~ "Floodplain",
+      id == "6.2" ~ "Mopane",
+      id == "7.1" ~ "Mopane",
+      id == "7.2" ~ "Floodplain",
+      id == "8.1" ~ "Mopane",
+      id == "8.2" ~ "Floodplain",
+      id == "9.1" ~ "Mopane",
+      id == "9.2" ~ "Floodplain",
+      id == "10.1" ~ "Mopane",
+      id == "10.2" ~ "Floodplain"
+    ),
+    count = if_else(count == 0, 1, count),
+    species = str_to_lower(species),
+  ) %>%
+  left_join(species_names, by = join_by("species" == "entered_value")) %>%
+  mutate(scientific_name = str_replace(scientific_name, "_", " "))
+# Get order and family names using `taxize` ONLY RUN ONCE
+higher_taxonomy <- taxize::tax_name(
+  sci = c(cleaned_data$scientific_name |> unique()),
+  get = c("order", "family", "class")
+)
+
+higher_taxonomy <- higher_taxonomy |>
+  mutate(
+    order = case_when(
+      query == "equus burchelli" ~ "Perissodactyla",
+      query == "aepyceros molampus" ~ "Artiodactyla",
+      query == "cercopithecus aethiops" ~ "Primates",
+      query == "mungos mongo" ~ "Carnivora",
+      query == "connochaetus taurinus" ~ "Artiodactyla",
+      query == "hippotragus equinus" ~ "Artiodactyla",
+      TRUE ~ order
+    ),
+    family = case_when(
+      query == "equus burchelli" ~ "Equidae",
+      query == "aepyceros molampus" ~ "Bovidae",
+      query == "cercopithecus aethiops" ~ "Cercopithecidae",
+      query == "mungos mongo" ~ "Herpestidae",
+      query == "connochaetus taurinus" ~ "Bovidae",
+      query == "hippotragus equinus" ~ "Bovidae",
+      TRUE ~ family
+    ),
+    class = case_when(
+      query == "equus burchelli" ~ "Mammalia",
+      query == "aepyceros molampus" ~ "Mammalia",
+      query == "cercopithecus aethiops" ~ "Mammalia",
+      query == "mungos mongo" ~ "Mammalia",
+      query == "connochaetus taurinus" ~ "Mammalia",
+      query == "hippotragus equinus" ~ "Mammalia",
+      TRUE ~ class
+    )
+  )
+
+cleaned_data <- cleaned_data |>
+  left_join(higher_taxonomy, by = c("scientific_name" = "query")) |>
+  select(
+    id,
+    species,
+    count,
+    distance,
+    angle,
+    type,
+    day,
+    year,
+    common_name,
+    order,
+    family,
+    class,
+    scientific_name
+  )
+
+
+#Maximum abundance over three days
+results <- cleaned_data %>%
+  group_by(year, type, day) %>%
+
+  summarise(
+    Species_Richness = n_distinct(species),
+    Species_Abundance = sum(count, na.rm = TRUE)
+  ) %>%
+  group_by(year, type) %>%
+  summarise(
+    Species_Richness = max(Species_Richness),
+    Species_Abundance = max(Species_Abundance)
+  ) %>%
+
+  ungroup()
+
+overall <- cleaned_data %>%
+  group_by(year, day) %>%
+  summarise(
+    type = "Both",
+    Species_Richness = n_distinct(species),
+    Species_Abundance = sum(count, na.rm = TRUE)
+  ) %>%
+  group_by(year, type) %>%
+  summarise(
+    Species_Richness = max(Species_Richness),
+    Species_Abundance = max(Species_Abundance)
+  )
+
+final_results <- bind_rows(results, overall) %>%
+  mutate(type = factor(type, levels = c("Floodplain", "Mopane", "Both")))
+#Species richness
+transect_species_rich <- final_results %>%
+  ggplot() +
+  geom_col(
+    aes(x = type, y = Species_Richness, fill = year),
+    position = position_dodge()
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches") +
+  my_theme(legend.position = "none") +
+
+  labs(y = "Total species richness", x = "Survey")
+transect_species_abund <- final_results %>%
+  ggplot() +
+  geom_col(
+    aes(x = type, y = Species_Abundance, fill = year),
+    position = position_dodge()
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches") +
+  my_theme(legend.position = "none") +
+  labs(y = "Total species abundance", x = "Survey")
+transect_species_rich + transect_species_abund
+
+
+#Results with mean by day
+results_by_day <- cleaned_data %>%
+  group_by(year, type, day) %>%
+
+  summarise(
+    Species_Richness = n_distinct(species),
+    Species_Abundance = sum(count, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+overall_by_day <- cleaned_data %>%
+  group_by(year, day) %>%
+  summarise(
+    type = "Both",
+    Species_Richness = n_distinct(species),
+    Species_Abundance = sum(count, na.rm = TRUE)
+  )
+
+# Combine both
+final_results_by_day <- bind_rows(results_by_day, overall_by_day) %>%
+  mutate(type = factor(type, levels = c("Floodplain", "Mopane", "Both")))
+
+
+#Boxplot for results by day
+transect_species_rich_daily <- final_results_by_day %>%
+  ggplot(aes(x = type)) +
+  geom_boxplot(aes(y = Species_Richness, fill = year)) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches") +
+  my_theme(legend.position = "none") +
+
+  labs(y = "Species richness", x = "Survey")
+
+
+transect_species_abund_daily <- final_results_by_day %>%
+  ggplot(aes(x = type)) +
+  geom_boxplot(aes(y = Species_Abundance, fill = year)) +
+  scale_fill_paletteer_d("nationalparkcolors::Arches") +
+  my_theme(legend.position = "none") +
+
+  labs(y = "Species abundance", x = "Survey")
+
+transect_species_rich_daily + transect_species_abund_daily
+
+
+#Supp table
+cleaned_data %>%
+  group_by(
+    `Common name` = common_name |>
+      str_replace_all("_", " ") |>
+      str_to_sentence()
+  ) |>
+  summarise(
+    `Scientific name` = first(scientific_name) |>
+      str_to_sentence() |>
+      str_replace_all("_", " "),
+    `Maximum count` = max(count),
+    years = paste(unique(year), collapse = ", "),
+    order = first(order)
+  ) |>
+  View()
+```
+
+Functional groups
+
+```{r}
+
+results <- cleaned_data %>%
+  group_by(year, type, day, order) %>%
+
+  summarise(
+    Species_Richness = n_distinct(species),
+    Species_Abundance = sum(count, na.rm = TRUE)
+  ) %>%
+  group_by(year, type, order) %>%
+  summarise(
+    Species_Richness = max(Species_Richness),
+    Species_Abundance = max(Species_Abundance)
+  ) %>%
+
+  ungroup()
+
+overall <- cleaned_data %>%
+  group_by(year, day, order) %>%
+  summarise(
+    type = "Both",
+    Species_Richness = n_distinct(species),
+    Species_Abundance = sum(count, na.rm = TRUE)
+  ) %>%
+  group_by(year, type, order) %>%
+  summarise(
+    Species_Richness = max(Species_Richness),
+    Species_Abundance = max(Species_Abundance)
+  )
+
+final_results <- bind_rows(results, overall) %>%
+  mutate(type = factor(type, levels = c("Floodplain", "Mopane", "Both")))
+#Species richness
+total_rich_transects_func <- final_results %>%
+  filter(year == 2025) %>%
+  ggplot() +
+  geom_col(
+    aes(x = type, y = Species_Richness, fill = order),
+    position = position_dodge(),
+    colour = "black"
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Redwoods", direction = 1) +
+  my_theme(legend.position = "bottom") +
+  labs(y = "Total species richness", x = "Survey", fill = "Order")
+#facet_wrap(~year)
+total_abund_transects_func <- final_results %>%
+  filter(year == 2025) %>%
+  ggplot() +
+  geom_col(
+    aes(x = type, y = Species_Abundance, fill = order),
+    position = position_dodge(),
+    colour = "black"
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Redwoods", direction = 1) +
+  my_theme(legend.position = "bottom") +
+  labs(y = "Total species abundance", x = "Survey", fill = "Order")
+#facet_wrap(~year)
+total_rich_transects_func +
+  total_abund_transects_func +
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "bottom",
+    legend.text = element_text(colour = "black", size = 18),
+    legend.title = element_text(colour = "black", size = 20),
+  )
+
+#Total species abundance per species
+results <- cleaned_data %>%
+  filter(class == "Mammalia") %>%
+  mutate(
+    common_name = str_replace_all(common_name, "_", " "),
+    common_name = str_to_sentence(common_name)
+  ) %>%
+
+  group_by(year, type, common_name) %>%
+
+  summarise(
+    Species_Richness = n_distinct(common_name),
+    Species_Abundance = sum(count, na.rm = TRUE)
+  )
+
+
+total_abund_transects_func <- results %>%
+  filter(year == 2025) %>%
+  ggplot() +
+  geom_col(
+    aes(x = common_name, y = Species_Abundance, fill = type),
+    position = position_dodge(),
+    colour = "black"
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Acadia", direction = 1) +
+  my_theme(
+    legend.position = "top",
+    axis.text.x = element_text(angle = 90, hjust = 0.9, vjust = 0.4)
+  ) +
+  labs(y = "Species abundance", x = "Species", fill = "Transect")
+#facet_wrap(~year)
+total_abund_transects_func
+
+
+```
+
+#Species curve
+
+```{r}
+all_habitats <- cleaned_data %>%
+  filter(year == 2025) %>%
+  select(species, day, count) %>%
+  pivot_wider(
+    names_from = species,
+    values_from = count,
+    values_fn = sum,
+    values_fill = 0
+  ) %>%
+  select(-day) %>%
+  vegan::specaccum()
+data <- data.frame(
+  Day = all_habitats$sites,
+  Richness = all_habitats$richness,
+  SD = all_habitats$sd,
+  Habitat = "All"
+)
+
+floodplain <- cleaned_data %>%
+  filter(year == 2025, type == "Floodplain") %>%
+  select(species, day, count) %>%
+  pivot_wider(
+    names_from = species,
+    values_from = count,
+    values_fn = sum,
+    values_fill = 0
+  ) %>%
+  select(-day) %>%
+  vegan::specaccum()
+data <- bind_rows(
+  data,
+  data.frame(
+    Day = floodplain$sites,
+    Richness = floodplain$richness,
+    SD = floodplain$sd,
+    Habitat = "Floodplain"
+  )
+)
+
+mopane <- cleaned_data %>%
+  filter(year == 2025, type == "Mopane") %>%
+  select(species, day, count) %>%
+  pivot_wider(
+    names_from = species,
+    values_from = count,
+    values_fn = sum,
+    values_fill = 0
+  ) %>%
+  select(-day) %>%
+  vegan::specaccum()
+data <- bind_rows(
+  data,
+  data.frame(
+    Day = mopane$sites,
+    Richness = mopane$richness,
+    SD = mopane$sd,
+    Habitat = "Mopane"
+  )
+)
+
+ggplot(data) +
+  geom_point(aes(x = Day, y = Richness, colour = Habitat)) +
+  geom_line(aes(x = Day, y = Richness, colour = Habitat)) +
+  geom_ribbon(
+    aes(x = Day, ymin = Richness - SD, ymax = Richness + SD, fill = Habitat),
+    alpha = 0.4
+  ) +
+  scale_fill_paletteer_d("nationalparkcolors::Acadia", direction = 1) +
+  scale_colour_paletteer_d("nationalparkcolors::Acadia", direction = 1) +
+  scale_x_continuous(breaks = c(1, 2, 3)) +
+  # scale_y_continuous(limits = c(0, 16)) +
+
+  labs(x = "Survey effort (days)", y = "Unique species detected") +
+  my_theme(
+    legend.position = "none"
+  )
+
+```
+
+# Density estimates
+
+```{r}
+conversion_factor <- convert_units("metre", "metre", "square kilometre")
+cleaned_data %>%
+  filter() %>%
+  select(type, species, angle, distance, id, year, count) %>%
+  filter(year == 2025) %>%
+  uncount(count) %>%
+group_by(species) |>
+  mutate(
+    Effort = case_when(type == "Mopane" ~ 36530, type == "Floodplain" ~ 21770),
+    angle_radians = angle * pi / 180,
+    distance = sin(angle_radians) * distance,
+    Area = 1750,
+    object = row_number(),
+    Sample.Label = case_when(
+      type == "Mopane" ~ "1",
+      type == "Floodplain" ~ "2"
+    ),
+    #Sample.Label = 1,
+    Region.Label = type
+  ) %>%
+
+  select(-angle_radians, -type, -angle, -id) -> data_2025
+
+hist(
+  data_2025$distance,
+  breaks = 20,
+  xlab = "Distance (m)",
+  main = "Herbivore survey transects"
+)
+
+distance_analysis_2025 <-
+  ds(
+    data_2025 |> filter(!species %in% c("leopard", "slender_mon")),
+    key = "hn", # Half-normal function
+    convert_units = conversion_factor,
+    truncation = "15%",
+    formula = ~species,
+    adjustment = "cos"
+  )
+
+# Check goodness-of-fit
+gof_ds(distance_analysis_2025) #gof is fine. better than 2023 data
+
+summary(distance_analysis_2025)
+
+plot(
+  distance_analysis_2025,
+  #showpoints = FALSE,
+  main = "Herbivore survey transects\nSpecies as covariate"
+)
+data_2025 |>
+  select(species) |>
+  group_by(species) |>
+  summarise(n = n()) |>
+  View()
+
+
+distance_analysis_preds <-
+  dht2(
+    ddf = distance_analysis_2025,
+    flatfile = data_2025,
+    strat_formula = ~species,
+    convert_units = conversion_factor,
+    stratification = "object"
+  ) # Also this function doesn't like it when the Area is a different
+# value for the different Region.Label's
+distance_analysis_preds
+distance_analysis_preds |>
+  as_tibble() |>
+  select(all_of(c(
+    "species",
+    "Abundance",
+    "Abundance_CV",
+    "Abundance_se",
+    "LCI",
+    "UCI",
+    "ER",
+    "ER_CV",
+    "df"
+  ))) |>
+  left_join(
+    attributes(distance_analysis_preds)$density |>
+      select(all_of(c("species", "Density", "Density_CV", "Density_se"))),
+    by = "species"
+  ) |>
+  mutate(across(where(is.double), ~ round(.x, digits = 2))) %>%
+  left_join(
+    read_csv(
+      "./data/herbivores/ng18_herbivore_species_list.csv"
+    ),
+    by = join_by("species" == "entered_value")
+  ) |>
+  mutate(
+    scientific_name = str_replace(scientific_name, "_", " "),
+    common_name = str_replace_all(common_name, "_", " "),
+    common_name = str_to_sentence(common_name),
+  ) %>%
+  arrange(scientific_name) %>%
+  left_join(higher_taxonomy, by = c("scientific_name" = "query")) %>%
+  mutate(scientific_name = str_to_sentence(scientific_name)) %>%
+
+  select(
+    common_name,
+    scientific_name,
+    Density,
+    Density_se,
+    Abundance,
+    order
+  ) %>%
+  arrange(order, scientific_name) |>
+  View()
+
+
+```
+
+
+# eBird
+
+```{r}
+# If it's just a species list
+ebird <- readxl::read_excel("./data/Ebird list 2025.xlsx")
+```

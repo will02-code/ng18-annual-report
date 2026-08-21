@@ -1,0 +1,418 @@
+---
+title: "NG18 Khwai Private Reserve: cross-year trends"
+format:
+  html
+editor_options:
+  chunk_output_type: console
+---
+
+<!--
+This file holds analyses that combine data across multiple survey years
+(hydrology, flood extent, multi-year abundance/density trends) rather than
+belonging to a single year's folder. It was split out of the original
+combined `analysis.qmd` during the project restructure.
+-->
+
+# packages
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(paletteer)
+library(patchwork)
+library(tmap)
+library(terra)
+library(sf)
+
+my_theme <- function(title_size = 22, text_size = 20, ...) {
+  theme_bw() +
+    theme(
+      plot.title = element_text(
+        size = 22,
+        face = "bold",
+        colour = "black",
+        family = "tachoma"
+      ),
+      strip.text = element_text(size = text_size),
+      strip.background.x = element_rect(fill = "white", colour = "black"),
+      axis.text = element_text(size = text_size, colour = "black"),
+      axis.title = element_text(size = title_size, colour = "black"),
+      legend.title = element_text(size = title_size, colour = "black"),
+      legend.text = element_text(size = text_size, colour = "black"),
+      ...
+    )
+}
+```
+
+# Multi-year herbivore abundance/density trends
+
+```{r}
+abund <- read.csv("2025/data/abund_est.csv") |>
+  janitor::clean_names() |>
+  select(common_name, x2023, x2024, x2025) |>
+  pivot_longer(
+    cols = starts_with("x"),
+    names_to = "year",
+    values_to = "abundance"
+  ) |>
+  mutate(year = str_remove(year, "x")) |>
+  filter(is.na(abundance) == FALSE) |>
+  group_by(common_name) |>
+  mutate(n = n(), year = ymd(paste(year, "01", "01"))) |>
+  filter(n == 3)
+
+abund |>
+  ggplot(aes(x = year, y = abundance)) +
+  geom_line(aes(), size = 1) +
+  geom_point(aes(), size = 3) +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+  my_theme(legend.position = "none", ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Year", y = "Estimated abundance") +
+  facet_wrap(~common_name, scales = "free_y")
+
+abund <- read.csv("2025/data/dens.csv") |>
+  janitor::clean_names()
+
+abund |>
+  ggplot(aes(x = survey, y = density)) +
+  geom_line(aes(), size = 1) +
+  geom_point(aes(), size = 3) +
+  geom_ribbon(
+    aes(ymin = density - density_se, ymax = density + density_se),
+    alpha = 0.2
+  ) +
+  my_theme(legend.position = "none", ) +
+  facet_wrap(~common_name, scales = "free_y") +
+  labs(x = "Year", y = "Estimated density (per km²)")
+```
+
+# River flow (Rundu water level, 2010-2024)
+
+```{r}
+Rundu_Water_Level_Data_2010_2024 <- read_excel(
+  "shared/reference/Rundu Water Level Data 2010-2024.xlsx"
+)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+
+Rundu_Water_Level_Data_2010_2024 %>%
+  mutate(
+    date = as.Date(date),
+    year = year(date),
+    month = month(date),
+    # Define water_year starting from October
+    water_year = if_else(month >= 10, year, year - 1),
+    # The start of the water year (October 1)
+    start_wy = as.Date(paste0(water_year, "-10-01")),
+    # Day within the water year (Oct 1 = day 1)
+    wy_day = as.numeric(difftime(date, start_wy, units = "days")) + 1,
+    water_year_label = paste0(water_year, "/", (water_year + 1) %% 100),
+  ) %>%
+  # Filter to desired water years
+  filter(water_year > 2017) %>%
+# Plot daily data
+ggplot() +
+  geom_line(
+    aes(x = wy_day, y = level, colour = factor(water_year_label)),
+    linewidth = 1.5
+  ) +
+  # Create month boundary days for labeling the x-axis
+  # Days in each month from October to September (non-leap year assumed):
+  # Oct:31, Nov:30, Dec:31, Jan:31, Feb:28, Mar:31, Apr:30, May:31, Jun:30, Jul:31, Aug:31, Sep:30
+  scale_x_continuous(
+    breaks = c(
+      1, # Oct 1
+      1 + 31, # Nov 1 (Oct has 31 days)
+      1 + 31 + 30, # Dec 1
+      1 + 31 + 30 + 31, # Jan 1
+      1 + 31 + 30 + 31 + 31, # Feb 1
+      1 + 31 + 30 + 31 + 31 + 28, # Mar 1
+      1 + 31 + 30 + 31 + 31 + 28 + 31, # Apr 1
+      1 + 31 + 30 + 31 + 31 + 28 + 31 + 30, # May 1
+      1 + 31 + 30 + 31 + 31 + 28 + 31 + 30 + 31, # Jun 1
+      1 + 31 + 30 + 31 + 31 + 28 + 31 + 30 + 31 + 30, # Jul 1
+      1 + 31 + 30 + 31 + 31 + 28 + 31 + 30 + 31 + 30 + 31, # Aug 1
+      1 + 31 + 30 + 31 + 31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 # Sep 1
+    ),
+    labels = c(
+      "Oct",
+      "Nov",
+      "Dec",
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep"
+    )
+  ) +
+  scale_y_continuous(limits = c(0, 10), n.breaks = 10) +
+  labs(x = "Month", y = "Water Level", colour = "Water year") +
+  theme_bw() +
+  scale_colour_paletteer_d("nationalparkcolors::DeathValley", direction = 1) +
+  theme(
+    legend.position = "top",
+    legend.text = element_text(colour = "black", size = 16),
+    legend.title = element_text(colour = "black", size = 18),
+    axis.text = element_text(colour = "black", size = 16),
+    axis.title = element_text(colour = "black", size = 18),
+  )
+
+```
+
+# Inundation extent
+
+```{r}
+
+flood_area <- read_csv("2025/data/inundation/FloodArea_1990-2025.csv")
+flood_area |>
+  ggplot(aes(x = year, y = sum)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(
+    yintercept = mean(flood_area$sum),
+    linetype = "dashed",
+    color = "red"
+  ) +
+  scale_x_date(
+    breaks = seq(from = dmy("01-01-1990"), to = dmy("01-01-2025"), by = "year"),
+    date_labels = "%Y"
+  ) +
+  my_theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  labs(y = "Inundated area (km²)", x = "Year")
+
+rainfall <- read_csv(
+  "2025/data/inundation/annual_avg_rainfall_1981_2025_delta.csv"
+)
+rainfall |>
+  ggplot(aes(x = year, y = annual_avg_precipitation)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(
+    yintercept = mean(rainfall$annual_avg_precipitation),
+    linetype = "dashed",
+    color = "red"
+  ) +
+  scale_x_continuous(breaks = seq(from = 1981, to = 2025, by = 1)) +
+  my_theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  labs(y = "Mean annual rainfall (mm)", x = "Year")
+
+
+raster_files <- list.files(
+  "2025/data/inundation/maps",
+  full.names = TRUE,
+  pattern = ".tif$"
+)
+flood_rasters <- lapply(raster_files, rast)
+names(flood_rasters) <- str_extract(basename(raster_files), "\\d{4}")
+
+ng18_boundary <- vect("shared/gis/ng18_boundary.gpkg")
+
+is.valid(ng18_boundary)
+test <- flood_rasters[["2011"]] |>
+  subst(0, NA)
+test_2025 <- flood_rasters[["2025"]] |>
+  subst(0, NA)
+
+maps = c(test, test_2025)
+names(maps) <- c("2011", "2025")
+maps
+
+delta_map <- tm_shape(maps) +
+  tm_raster(col.legend = tm_legend_hide()) +
+
+  tm_shape(ng18_boundary, ) +
+  tm_lines(lwd = 2) +
+  tm_facets_wrap(ncol = 2) +
+  tm_graticules(
+    labels.size = 1,
+    alpha = 0.5,
+    labels.rot = c(90, 0),
+  ) +
+
+  tm_layout(
+    panel.label.bg.color = "white"
+  ) +
+  tm_compass(
+    group_id = "A",
+    position = tm_pos_in(0.75, 0.27, align.h = "center")
+  ) +
+  tm_scalebar(
+    text.size = 1,
+    breaks = c(0, 25, 50),
+    group_id = "A",
+    position = tm_pos_in(0.65, 0.15, align.h = "center")
+  )
+# tm_components(
+#   "A",
+#   position = tm_pos_in("RIGHT", "BOTTOM", align.h = "center"),
+#   stack = "vertical",
+#   frame = TRUE,
+#   bg = TRUE,
+#   bg.color = "white",
+#   bg.alpha = 0.5
+# )
+tmap_save(
+  delta_map,
+  filename = "shared/figures/flood_extent_delta.png"
+)
+# tm_layout(legend.outside = TRUE, legend.outside.position = "right")
+ng18_map <- tm_shape(maps) +
+  tm_raster(col.legend = tm_legend_hide()) +
+  tm_shape(ng18_boundary, is.main = TRUE) +
+  tm_lines(lwd = 2) +
+  # tm_facets_wrap(ncol = 2) +
+
+  tm_compass(group_id = "A") +
+  tm_scalebar(
+    text.size = 1,
+    breaks = c(0, 5, 10),
+    group_id = "A",
+  ) +
+  tm_components(
+    "A",
+    position = tm_pos_in(pos.h = 0.5, pos.v = 0.95, align.h = "center"),
+    stack = "vertical",
+    frame = TRUE,
+    bg = TRUE,
+    bg.color = "white",
+    bg.alpha = 0.5
+  ) +
+  tm_graticules(
+    labels.size = 1,
+    alpha = 0.5,
+    labels.rot = c(90, 0),
+    labels.inside.frame = TRUE
+  ) +
+  tm_layout(
+    panel.label.bg.color = "white",
+    outer.margins = c(0.05, 0.02, 0.02, 0.03),
+    inner.margins = c(0.1, 0.1, 0.1, 0.1),
+    frame = TRUE
+  )
+
+ng18_map
+tmap_save(ng18_map, filename = "shared/figures/flood_extent_ng18.png")
+
+#  tm_shape(maps) +
+#   tm_raster(col.legend = tm_legend_hide())
+
+camps <- vect("shared/gis/qgis_files/Maps (pre course)/Camps.shp")
+sites_df <- data.frame(
+  Site = c("A", "B", "C"),
+  Lat = c(-19.16979806, -19.176043, -19.180786),
+  Lon = c(23.702031, 23.693861, 23.686658)
+)
+sites <- vect(sites_df, geom = c("Lon", "Lat"), crs = "EPSG:4326")
+transects <- vect("shared/gis/qgis_files/transects.gpkg")
+plot(transects)
+fires <- vect("shared/gis/qgis_files/fires/September'23 Wild fire.shp")
+plot(fires)
+all_extents <- c(ext(camps), ext(sites), ext(transects), ext(fires))
+feature_extent <- (all_extents[[1]] +
+  all_extents[[2]] +
+  all_extents[[3]] +
+  all_extents[[4]]) |>
+  st_bbox(crs = st_crs(ng18_boundary))
+
+
+feature_extent |> plot()
+
+lower_ng18_map <- tm_shape(camps) +
+  tm_shape(maps[["2011"]]) +
+  tm_raster(
+    col_alpha = 0.5,
+    col.legend = tm_legend_hide(),
+    col.scale = tm_scale(values = "lightblue")
+  ) +
+  tm_shape(maps[["2025"]]) +
+  tm_raster(
+    col_alpha = 0.7,
+    col.legend = tm_legend_hide(),
+    col.scale = tm_scale(values = "blue")
+  ) +
+  tm_shape(
+    ng18_boundary,
+    is.main = TRUE,
+    bbox = c(23.50, -19.19, 23.73, -19.08)
+  ) +
+  tm_lines(lwd = 2) +
+  tm_symbols(size = 0.8, col = "black", shape = 2) +
+  # tm_text("Camps", col = "black", ymod = 0.5, xmod = 2, size = 1) +
+  tm_shape(sites) +
+  tm_dots(
+    fill = "Site",
+    size = 1,
+    fill.scale = tm_scale(
+      # map categories -> colours (and order)
+      values = c(A = "blue", B = "green", C = "red"),
+      limits = c("A", "B", "C") # optional: enforce order
+    ),
+    fill.legend = tm_legend(title = "Bird survey sites")
+  ) +
+  # tm_text("Site", size = 0.7, col = "black", ymod = 1, fontface = "bold") +
+  tm_shape(transects) +
+  tm_lines(
+    lwd = 2,
+    col = "type",
+    col.legend = tm_legend(
+      labels = c("Floodplain", "Mopane"),
+      fill = c("yellow", "green"),
+      lwd = 2,
+      title = "Herbivore transects"
+    )
+  ) +
+
+  tm_shape(fires) +
+  tm_polygons(
+    col = "black",
+    fill = "orange",
+    fill_alpha = 0.2,
+    fill.legend = tm_legend(title = "Wildfire Sept 2023")
+  ) +
+  tm_add_legend(
+    type = "polygons",
+    labels = "Wildfire Sept 2023",
+    fill = "orange",
+    alpha = 0.2
+  ) +
+  tm_graticules(
+    labels.size = 1,
+    alpha = 0.5,
+    labels.rot = c(90, 0),
+    labels.inside.frame = TRUE
+  ) +
+  tm_compass(group_id = "A") +
+  tm_scalebar(
+    text.size = 1,
+    breaks = c(0, 5, 10),
+    group_id = "A",
+  ) +
+  tm_components(
+    "A",
+    position = tm_pos_in(pos.h = "right", pos.v = "TOP", align.h = "center"),
+    stack = "vertical",
+    frame = TRUE,
+    bg = TRUE,
+    bg.color = "white",
+    bg.alpha = 0.5
+  ) +
+
+  tm_layout(
+    legend.show = FALSE,
+    outer.margins = c(0.05, 0.02, 0.02, 0.03),
+    inner.margins = c(0.1, 0.1, 0.1, 0.15),
+  )
+lower_ng18_map
+tmap_save(lower_ng18_map, filename = "shared/figures/flood_extent_lower_ng18.svg")
+
+```

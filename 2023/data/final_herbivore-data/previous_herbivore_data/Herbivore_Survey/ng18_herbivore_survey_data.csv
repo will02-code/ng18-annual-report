@@ -1,0 +1,24 @@
+id,species,undet,ad_f,ad_m,ad_u,sub_m,sub_f,sub_u,juv_f,juv_m,juv_u,count,distance,angle,odometer,lat,lon,habitat,burned,notes
+1.1,wild_dog,3,,,,,,,,,,3,400,30,0,-19.11692796,23.51264904,Riverine_Grasslands,n,
+1.1,zebra,4,,,,,,,,,,4,254,70,0.4,-19.116553,23.509024,Riverine_Grasslands,n,
+1.1,tsb,6,,,,,,,,,,6,238,70,0.4,-19.116553,23.509024,Riverine_Grasslands,n,
+1.1,giraffe,1,,,,,,,,,,1,868,70,0.8,-19.11594573,23.50491226,Riverine_Grasslands,n,
+1.1,impala,,3,1,,,,,,,,4,53,80,1.2,-19.11365962,23.50280936,Mopane,n,
+1.1,zebra,,,,6,,,2,,,,8,76,10,1.5,-19.1115524,23.50178072,Mopane,n,
+1.1,giraffe,,,1,,,,,,,,1,142,90,1.7,-19.110001,23.50215259,Kalahari_Appleleaf,n,
+1.1,buffalo,,,4,,,,,,,,4,39,80,2,-19.10739039,23.5034384,Mopane,n,
+1.1,elephant,,,2,,,,,,,,2,34,60,2.1,-19.10699092,23.50391497,Mopane,n,
+1.1,zebra,3,,,,,,,,,,3,108,80,2.8,-19.10107918,23.50453376,Mopane,n,
+1.1,zebra,3,,,,,,,,,,3,64,80,3.5,-19.09847138,23.50688676,Mopane,n,
+1.1,tree_squirrel,2,,,,,,,,,,2,11,70,4.1,-19.09839431,23.51244891,Mopane,n,
+1.1,tree_squirrel,5,,,,,,,,,,5,26,90,4.3,-19.09884606,23.51422223,Mopane,n,
+1.1,buffalo,,,2,,,,,,,,2,41,20,4.3,-19.09884606,23.51422223,Mopane,n,
+1.1,impala,13,,,,,,,,,,13,25,0,4.6,-19.0994378,23.51643114,Mopane,n,"possibly not undetermined, but entered incorrectly"
+1.1,buffalo,3,,,,,,,,,,3,205,80,8.7,-19.1142491,23.54439922,Riverine_Grasslands,n,"possibly not undetermined, but entered incorrectly"
+1.1,giraffe,2,,,,,,,,,,2,523,80,8.7,-19.1142491,23.54439922,Riverine_Grasslands,n,"possibly not undetermined, but entered incorrectly"
+1.1,zebra,1,,,,,,,,,,1,242,80,8.7,-19.1142491,23.54439922,Riverine_Grasslands,n,
+1.1,impala,,5,1,,,,,,,,6,29,90,9.2,-19.1142873,23.54838223,Kalahari_Appleleaf,n,
+1.1,zebra,,,,3,,,,,,1,4,224,45,9.5,-19.113088,23.54783,Riverine_Grasslands,n,
+1.1,impala,,13,,,5,,,,,,18,119,30,9.5,-19.113088,23.54783,Riverine_Grasslands,n,
+1.1,zebra,,,,3,,,,,,,3,349,30,9.5,-19.113088,23.54783,Riverine_Grasslands,n,
+1.1,impala,,,3,,,,,,,,3,348,30,9.5,-19.113088,23.54783,Riverine_Grasslands,n,
